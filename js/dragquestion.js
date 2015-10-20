@@ -93,7 +93,11 @@ H5P.DragQuestion = (function ($) {
       this.draggables[i] = new Draggable(element, i, answers);
       this.draggables[i].on('interacted', function () {
         self.answered = true;
-        self.triggerXAPIScored(self.getScore(), self.getMaxScore(), 'interacted');
+        //self.triggerXAPIScored(self.getScore(), self.getMaxScore(), 'interacted');
+        var xAPIEvent = self.createXAPIEventTemplate('answered');
+        addQuestionToXAPI(xAPIEvent);
+        addResponseToXAPI(xAPIEvent);
+        self.trigger(xAPIEvent);
       });
     }
 
@@ -1155,6 +1159,102 @@ H5P.DragQuestion = (function ($) {
       C.setOpacity($dropZone.children('.h5p-inner'), 'background', self.backgroundOpacity);
     }, 0);
   };
+  
+  /**
+   * Add the question itselt to the definition part of an xAPIEvent
+   */
+  var addQuestionToXAPI = function(xAPIEvent) {
+    var definition = xAPIEvent.getVerifiedStatementValue(['object', 'definition']);
+    definition.description = {
+      'en-US': params.question
+    };
+    definition.type = 'http://adlnet.gov/expapi/activities/cmi.interaction';
+    definition.interactionType = 'matching';
+    definition.correctResponsesPattern = [];
+    definition.source = [];
+    definition.target = [];
+    for (var targetIndex = 0; i < task.dropZones.length; targetIndex++) {
+      definition.target[targetIndex] = {
+        'id': targetIndex,
+        'description': {
+          'en': 'Drop zone ' + targetIndex
+        }
+      };
+      var correctElements = task.dropZones[targetIndex].correctElements;
+      for (var j = 0; j < correctElements.length; j++) {
+        if (definition.correctResponsesPattern.length) {
+          definition.correctResponsesPattern[0] += '[,]';
+        }
+        else {
+          definition.correctResponsesPattern.push('');
+        }
+        definition.correctResponsesPattern[0] += task.dropZones[targetIndex].correctElements[j] + '[.]' + targetIndex;
+      }
+    }
+  };
+
+  /**
+   * Add the response part to an xAPI event
+   *
+   * @param {H5P.XAPIEvent} xAPIEvent
+   *  The xAPI event we will add a response to
+   */
+  var addResponseToXAPI = function(xAPIEvent) {
+    xAPIEvent.setScoredResult(score, self.getMaxScore(), self);
+    if (params.userAnswers === undefined) {
+      calcScore();
+    }
+    var response = '';
+    for (var i = 0; i < params.userAnswers.length; i++) {
+      if (response !== '') {
+        response += '[,]';
+      }
+      response += idMap === undefined ? params.userAnswers[i] : idMap[params.userAnswers[i]];
+    }
+    xAPIEvent.data.statement.result.response = response;
+  };
+
+  // Initialization code
+  // Randomize order, if requested
+  var idMap;
+  // Store original order in answers
+  for (i = 0; i < params.answers.length; i++) {
+    params.answers[i].originalOrder = i;
+  }
+  if (params.behaviour.randomAnswers) {
+    var origOrder = $.extend([], params.answers);
+    params.answers = H5P.shuffleArray(params.answers);
+
+    // Create a map from the new id to the old one
+    idMap = [];
+    for (i = 0; i < params.answers.length; i++) {
+      idMap[i] = params.answers[i].originalOrder;
+    }
+  }
+
+  // Start with an empty set of user answers.
+  params.userAnswers = [];
+
+  // Restore previous state
+  if (contentData && contentData.previousState !== undefined) {
+
+    // Restore answers
+    if (contentData.previousState.answers) {
+      if (!idMap) {
+        params.userAnswers = contentData.previousState.answers;
+      }
+      else {
+        // The answers have been shuffled, and we must use the id mapping.
+        for (i = 0; i < contentData.previousState.answers.length; i++) {
+          for (var k = 0; k < idMap.length; k++) {
+            if (idMap[k] === contentData.previousState.answers[i]) {
+              params.userAnswers.push(k);
+            }
+          }
+        }
+      }
+    }
+  }
 
   return C;
 })(H5P.jQuery);
